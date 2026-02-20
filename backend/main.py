@@ -40,19 +40,19 @@ async def health():
 async def process_stream(request: Request):
     data = await request.json()
     url = data.get("url")
-    source_page = data.get("sourcePage")
+    session_key = data.get("sessionKey")
     
-    if not url or not source_page:
-        return {"error": "Missing url or sourcePage"}, 400
+    if not url or not session_key:
+        return {"error": "Missing url or sessionKey"}, 400
 
-    if source_page not in sessions:
-        sessions[source_page] = []
+    if session_key not in sessions:
+        sessions[session_key] = []
     
-    if url not in sessions[source_page]:
-        sessions[source_page].append(url)
-        logger.info(f"Added to session {source_page}: {url}")
+    if url not in sessions[session_key]:
+        sessions[session_key].append(url)
+        logger.info(f"Added to session {session_key}: {url}")
     
-    return {"status": "captured", "count": len(sessions[source_page])}
+    return {"status": "captured", "count": len(sessions[session_key])}
 
 def run_download(url: str, title: str = None):
     """Executes yt-dlp to download and convert the stream (for manifests)."""
@@ -91,9 +91,28 @@ def run_stitch(urls: List[str], title: str = None):
     logger.info(f"Starting stitch process for {len(urls)} segments.")
 
     try:
-        # Sort to ensure segments with 'init' come first
-        sorted_urls = sorted(urls, key=lambda u: 0 if 'init' in u.lower() else 1)
+        # Sort logic: 
+        # 1. init segments first
+        # 2. then attempt to sort remaining segments by their sequence number if found in URL
+        def get_sort_key(u: str):
+            u_lower = u.lower()
+            if 'init' in u_lower:
+                return (0, 0)
+            
+            # Try to find a sequence number (e.g., segment_1.m4s -> 1)
+            import re
+            numbers = re.findall(r'\d+', u)
+            if numbers:
+                # Use the last number in the URL as the sequence index
+                return (1, int(numbers[-1]))
+            return (1, 999999) # Fallback
+
+        sorted_urls = sorted(urls, key=get_sort_key)
         
+        has_init = any('init' in u.lower() for u in sorted_urls)
+        if not has_init:
+            logger.warning("No 'init' segment found in this session. This may fail.")
+
         for i, url in enumerate(sorted_urls):
             ext = ".m4s" if ".m4s" in url else (".mp4" if "init" in url else ".bin")
             filename = f"chunk_{i:04d}{ext}"
@@ -154,16 +173,15 @@ async def trigger_download(request: Request, background_tasks: BackgroundTasks):
 @app.post("/stitch")
 async def trigger_stitch(request: Request, background_tasks: BackgroundTasks):
     data = await request.json()
-    source_page = data.get("sourcePage")
+    session_key = data.get("sessionKey")
     title = data.get("title", "stitched_session")
 
-    if not source_page or source_page not in sessions:
-        raise HTTPException(status_code=404, detail="No segments found for this source page")
+    if not session_key or session_key not in sessions:
+        raise HTTPException(status_code=404, detail="No segments found for this session")
 
-    # Get a copy of the URLs and then clear the session for this page
-    # to prevent double-stitching the same segments later.
-    urls = list(sessions[source_page])
-    del sessions[source_page]
+    # Get a copy of the URLs and then clear the session for this key
+    urls = list(sessions[session_key])
+    del sessions[session_key]
     
     background_tasks.add_task(run_stitch, urls, title)
     return {"status": "started", "segments": len(urls)}
