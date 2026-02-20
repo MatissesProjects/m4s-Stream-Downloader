@@ -91,7 +91,10 @@ def run_stitch(urls: List[str], title: str = None):
     logger.info(f"Starting stitch process for {len(urls)} segments.")
 
     try:
-        for i, url in enumerate(urls):
+        # Sort to ensure segments with 'init' come first
+        sorted_urls = sorted(urls, key=lambda u: 0 if 'init' in u.lower() else 1)
+        
+        for i, url in enumerate(sorted_urls):
             ext = ".m4s" if ".m4s" in url else (".mp4" if "init" in url else ".bin")
             filename = f"chunk_{i:04d}{ext}"
             filepath = os.path.join(session_dir, filename)
