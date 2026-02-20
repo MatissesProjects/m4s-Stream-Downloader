@@ -103,31 +103,31 @@ def run_stitch(urls: List[str], title: str = None):
                     f.write(chunk)
             segment_files.append(filepath)
 
-        # Create ffmpeg concat file
-        concat_file = os.path.join(session_dir, "concat.txt")
-        with open(concat_file, 'w') as f:
+        # Binary join segments instead of using ffmpeg concat demuxer
+        # This is much more reliable for .m4s segments
+        merged_file = os.path.join(session_dir, "merged_segments.tmp")
+        with open(merged_file, 'wb') as outfile:
             for sf in segment_files:
-                # Use absolute paths and escape single quotes for ffmpeg
-                path = os.path.abspath(sf).replace("'", "'\\''")
-                f.write(f"file '{path}'\n")
+                with open(sf, 'rb') as infile:
+                    outfile.write(infile.read())
 
         output_mp3 = os.path.join(DOWNLOAD_DIR, f"{safe_title}_{timestamp}.mp3")
         
-        # FFmpeg command: Concatenate segments and convert to MP3
-        # -f concat -safe 0: use concat demuxer
-        # -i concat.txt: input file list
-        # -acodec libmp3lame: convert to mp3
+        # FFmpeg command: Just convert the already-merged binary file to MP3
         import subprocess
         cmd = [
-            'ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', concat_file,
+            'ffmpeg', '-y', '-i', merged_file,
             '-acodec', 'libmp3lame', '-ab', '192k', output_mp3
         ]
         
-        logger.info(f"Running ffmpeg: {' '.join(cmd)}")
+        logger.info(f"Running ffmpeg conversion: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode == 0:
             logger.info(f"Successfully stitched and saved to {output_mp3}")
+            # Clean up temp file
+            if os.path.exists(merged_file):
+                os.remove(merged_file)
         else:
             logger.error(f"FFmpeg failed: {result.stderr}")
 
@@ -159,6 +159,27 @@ async def trigger_stitch(request: Request, background_tasks: BackgroundTasks):
     urls = sessions[source_page]
     background_tasks.add_task(run_stitch, urls, title)
     return {"status": "started", "segments": len(urls)}
+
+@app.post("/clear")
+async def clear_all_data():
+    """Clears all session data and removes temporary files."""
+    sessions.clear()
+    logger.info("Cleared all session data.")
+    
+    # Remove all subdirectories in TEMP_DIR
+    import shutil
+    try:
+        for filename in os.listdir(TEMP_DIR):
+            file_path = os.path.join(TEMP_DIR, filename)
+            if os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+            else:
+                os.remove(file_path)
+        logger.info("Successfully cleared TEMP_DIR.")
+    except Exception as e:
+        logger.error(f"Error clearing TEMP_DIR: {str(e)}")
+        
+    return {"status": "cleared"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=5000)

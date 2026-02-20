@@ -151,8 +151,14 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const clearBtn = document.getElementById('clear-btn');
-  clearBtn?.addEventListener('click', () => {
-    chrome.runtime.sendMessage({ action: 'clearCaptured' }, () => {
+  clearBtn?.addEventListener('click', async () => {
+    // Notify extension backend
+    chrome.runtime.sendMessage({ action: 'clearCaptured' }, async () => {
+      // Notify local Python backend
+      try {
+        await fetch('http://localhost:5000/clear', { method: 'POST' });
+      } catch (err) {}
+      
       updateUI();
     });
   });
