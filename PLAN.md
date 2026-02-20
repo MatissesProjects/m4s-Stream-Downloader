@@ -26,7 +26,7 @@ Step 1.3: Popup UI (popup.html & popup.js) [DONE]
 Goal: Receive URLs, download the stream, and process the audio.
 
 Step 2.1: Server Setup [DONE]
-Step 2.2: The Download Manager (yt-dlp integration) [PENDING]
+Step 2.2: The Download Manager (yt-dlp integration) [DONE]
 Step 2.3: The Fallback Stitcher (ffmpeg integration) [PENDING]
 
 
