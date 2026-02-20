@@ -8,6 +8,7 @@ interface CapturedStream {
   url: string;
   sourcePage: string;
   sourceTitle: string;
+  sessionKey: string;
   timestamp: string;
   type: string;
 }
@@ -33,6 +34,14 @@ function getFileType(url: string): string {
   return 'Unknown';
 }
 
+function getSessionKey(url: string): string {
+  // Extract the base path before 'init.mp4' or 'segment_X.m4s'
+  // e.g. .../content/64fcdc71-cef9-4788-89a6-a3bdecea2c93/
+  const match = url.match(/(.*\/)[\w-]+\.(m4s|mp4|mpd|m3u8)/);
+  if (match && match[1]) return match[1];
+  return url.split(/[?#]/)[0]; // Fallback to URL without query params
+}
+
 chrome.webRequest.onCompleted.addListener(
   async (details) => {
     const state = await chrome.storage.local.get(['enabled', 'capturedStreams']) as AppState;
@@ -40,23 +49,12 @@ chrome.webRequest.onCompleted.addListener(
 
     const url = details.url;
     if (TARGET_EXTENSIONS.some(ext => url.includes(ext))) {
-      // If we see a new manifest or init file, it might be a new track.
-      // We'll reset the current session if it's a manifest or if it's the first capture.
-      const isNewSessionMarker = url.includes('.mpd') || url.includes('.m3u8') || url.includes('init.mp4');
-      
-      if (isNewSessionMarker && capturedUrls.size > 0) {
-        console.log('New session marker detected, resetting local capture state.');
-        capturedUrls.clear();
-        // Optionally notify backend to clear its session too
-        try {
-          fetch('http://localhost:5000/clear', { method: 'POST' }).catch(() => {});
-        } catch (err) {}
-      }
+      const sessionKey = getSessionKey(url);
 
       if (capturedUrls.has(url)) return;
 
       capturedUrls.add(url);
-      console.log('Captured Media URL:', url);
+      console.log('Captured Media URL:', url, 'Session:', sessionKey);
 
       // Try to get the tab's title for better file naming
       let sourceTitle = 'Unknown Page';
@@ -73,6 +71,7 @@ chrome.webRequest.onCompleted.addListener(
         url,
         sourcePage: details.initiator || 'unknown',
         sourceTitle,
+        sessionKey,
         timestamp: new Date().toISOString(),
         type: getFileType(url)
       };

@@ -7,6 +7,8 @@ const BACKEND_STITCH_URL = 'http://localhost:5000/stitch';
 interface CapturedStream {
   url: string;
   sourcePage: string;
+  sourceTitle: string;
+  sessionKey: string;
   timestamp: string;
   type: string;
 }
@@ -28,23 +30,24 @@ async function updateUI() {
     if (streams.length === 0) {
       listContainer.innerHTML = '<div style="padding: 10px; font-size: 0.8rem; text-align: center;">No streams captured yet.</div>';
     } else {
-      // Group by sourcePage to offer stitching
-      const sessions = new Set(streams.map(s => s.sourcePage));
+      // Group by sessionKey to offer stitching
+      const sessionKeys = Array.from(new Set(streams.map(s => s.sessionKey)));
       
-      sessions.forEach(sessionPage => {
-        const sessionStreams = streams.filter(s => s.sourcePage === sessionPage);
+      sessionKeys.forEach(sessionKey => {
+        const sessionStreams = streams.filter(s => s.sessionKey === sessionKey);
         const segmentsCount = sessionStreams.filter(s => s.type === 'Segment (.m4s)').length;
         
-        if (segmentsCount > 1) {
+        if (segmentsCount > 0) {
           const sessionItem = document.createElement('div');
           sessionItem.className = 'stream-item session-item';
+          const title = sessionStreams[0].sourceTitle || "Session";
           sessionItem.innerHTML = `
             <div class="stream-header">
-              <span class="stream-type session-type">SESSION (${segmentsCount} segments)</span>
+              <span class="stream-type session-type">SESSION (${segmentsCount} segs)</span>
             </div>
-            <div class="stream-url" title="${sessionPage}">${sessionPage}</div>
+            <div class="stream-url" title="${sessionKey}">${title}</div>
             <div class="stream-actions">
-              <button class="stitch-btn" data-source="${sessionPage}">Stitch All</button>
+              <button class="stitch-btn" data-session="${sessionKey}" data-title="${title}">Stitch All</button>
             </div>
           `;
           listContainer.appendChild(sessionItem);
@@ -65,7 +68,7 @@ async function updateUI() {
           </div>
           <div class="stream-url" title="${stream.url}">${stream.url}</div>
           <div class="stream-actions">
-            <button class="download-btn" data-url="${stream.url}" data-title="${stream.sourcePage}">Download</button>
+            <button class="download-btn" data-url="${stream.url}" data-title="${stream.sourceTitle || stream.sourcePage}">Download</button>
           </div>
         `;
         listContainer.appendChild(item);
@@ -84,8 +87,9 @@ async function updateUI() {
       document.querySelectorAll('.stitch-btn').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           const target = e.target as HTMLButtonElement;
-          const source = target.getAttribute('data-source');
-          if (source) await triggerStitch(source);
+          const sessionKey = target.getAttribute('data-session');
+          const title = target.getAttribute('data-title');
+          if (sessionKey) await triggerStitch(sessionKey, title || 'stitched_session');
         });
       });
     }
@@ -106,12 +110,12 @@ async function triggerDownload(url: string, title: string) {
   } catch (err) { alert('Failed to connect to backend.'); }
 }
 
-async function triggerStitch(sourcePage: string) {
+async function triggerStitch(sessionKey: string, title: string) {
   try {
     const response = await fetch(BACKEND_STITCH_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourcePage, title: 'stitched_session' })
+      body: JSON.stringify({ sessionKey, title })
     });
     if (response.ok) alert('Stitching started in background!');
     else alert('Backend error: ' + response.statusText);
