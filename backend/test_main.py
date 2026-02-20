@@ -10,13 +10,13 @@ def test_health_check():
 
 def test_process_stream():
     payload = {
-        "streamUrl": "http://example.com/test.mpd",
+        "url": "http://example.com/test.mpd",
         "sourcePage": "http://example.com/page",
         "timestamp": "2023-10-27T10:00:00Z"
     }
     response = client.post("/process", json=payload)
     assert response.status_code == 200
-    assert response.json() == {"status": "captured", "url": "http://example.com/test.mpd"}
+    assert response.json() == {"status": "captured", "count": 1}
 
 def test_trigger_download():
     payload = {
