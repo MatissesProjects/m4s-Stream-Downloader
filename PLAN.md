@@ -15,47 +15,20 @@ Backend (The Workhorse): A Python API (using Flask or FastAPI) listening for inb
 
 Processing Engine: Python triggers yt-dlp (for manifests) or ffmpeg (for raw segments) to download, stitch, and convert the payload into a final MP3 file.
 
-3. Phase 1: The Chrome Extension (Frontend)
+3. Phase 1: The Chrome Extension (Frontend) - [COMPLETED]
 Goal: Intercept media URLs silently and pass them to the local server.
 
-Step 1.1: Setup Manifest V3
+Step 1.1: Setup Manifest V3 [DONE]
+Step 1.2: Background Service Worker (background.ts) [DONE]
+Step 1.3: Popup UI (popup.html & popup.js) [DONE]
 
-Define permissions: webRequest, activeTab, scripting.
-
-Define host permissions: <all_urls> (to catch streams on any domain).
-
-Step 1.2: Background Service Worker (background.js)
-
-Implement chrome.webRequest.onCompleted listener.
-
-Filter network traffic for ['.mpd', '.m3u8', 'init.mp4', '.m4s'].
-
-Write the fetch() logic to send captured URLs to http://localhost:5000/process.
-
-Edge Case Handling: Implement a debounce or deduplication logic. A single page load might trigger 50 .m4s requests; we only want to send the master .mpd or the first .m4s to Python to avoid spamming the local server.
-
-Step 1.3: Popup UI (popup.html & popup.js)
-
-Create a simple UI with a toggle switch (Enable/Disable interceptor).
-
-Add a visual status indicator to show if the local Python server is connected.
-
-4. Phase 2: The Python Backend (Backend)
+4. Phase 2: The Python Backend (Backend) - [IN PROGRESS]
 Goal: Receive URLs, download the stream, and process the audio.
 
-Step 2.1: Server Setup
+Step 2.1: Server Setup [DONE]
+Step 2.2: The Download Manager (yt-dlp integration) [PENDING]
+Step 2.3: The Fallback Stitcher (ffmpeg integration) [PENDING]
 
-Initialize a lightweight web framework (FastAPI is recommended for speed/async, Flask for simplicity).
-
-Create a POST /process endpoint that accepts JSON {"streamUrl": "...", "sourcePage": "..."}.
-
-Step 2.2: The Download Manager (yt-dlp integration)
-
-Write a handler for .mpd and .m3u8 URLs.
-
-Configure yt-dlp to automatically extract the best audio and convert it to MP3.
-
-Step 2.3: The Fallback Stitcher (ffmpeg integration)
 
 Write a handler for raw .m4s segments (for sites that hide the manifest).
 
