@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Stream Catcher</title>
+  <link rel="stylesheet" href="css/popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Stream Catcher</h1>
+    <div class="status-row">
+      <span>Interceptor:</span>
+      <label class="switch">
+        <input type="checkbox" id="interceptor-toggle">
+        <span class="slider round"></span>
+      </label>
+    </div>
+    <div id="status-indicator" class="status-indicator">
+      Checking backend...
+    </div>
+    <div class="info">
+      <p>Captured URLs: <span id="captured-count">0</span></p>
+    </div>
+    <button id="clear-btn">Clear List</button>
+  </div>
+  <script src="js/popup.js"></script>
+</body>
+</html>

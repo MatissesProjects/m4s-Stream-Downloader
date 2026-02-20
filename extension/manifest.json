@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Stream Catcher TS",
+  "version": "1.0.0",
+  "description": "Intercepts audio streams and manifests, sending them to a local processor.",
+  "permissions": [
+    "webRequest",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "js/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Stream Catcher"
+  }
+}
