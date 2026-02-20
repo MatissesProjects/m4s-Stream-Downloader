@@ -7,6 +7,9 @@ import yt_dlp
 import requests
 from datetime import datetime
 from typing import Dict, List
+import subprocess
+import json
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,7 +32,7 @@ for d in [DOWNLOAD_DIR, TEMP_DIR]:
     if not os.path.exists(d):
         os.makedirs(d)
 
-# Session storage: sourcePage -> List[urls]
+# Session storage: sessionKey -> List[urls]
 sessions: Dict[str, List[str]] = {}
 
 @app.get("/health")
@@ -80,6 +83,29 @@ def run_download(url: str, title: str = None):
     except Exception as e:
         logger.error(f"Download failed: {str(e)}")
 
+def check_encryption(file_path: str) -> bool:
+    """Uses ffprobe to check if the file is encrypted (CENC)."""
+    try:
+        cmd = [
+            'ffprobe', '-v', 'quiet', '-show_streams', 
+            '-print_format', 'json', file_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            return False
+            
+        data = json.loads(result.stdout)
+        for stream in data.get('streams', []):
+            if stream.get('is_encrypted') == '1' or 'encryption_scheme' in stream:
+                return True
+            tags = stream.get('tags', {})
+            if any('encrypt' in str(k).lower() or 'encrypt' in str(v).lower() for k, v in tags.items()):
+                return True
+        return False
+    except Exception as e:
+        logger.warning(f"Encryption check failed: {str(e)}")
+        return False
+
 def run_stitch(urls: List[str], title: str = None):
     """Downloads segments and stitches them using ffmpeg."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -91,21 +117,14 @@ def run_stitch(urls: List[str], title: str = None):
     logger.info(f"Starting stitch process for {len(urls)} segments.")
 
     try:
-        # Sort logic: 
-        # 1. init segments first
-        # 2. then attempt to sort remaining segments by their sequence number if found in URL
         def get_sort_key(u: str):
             u_lower = u.lower()
             if 'init' in u_lower:
                 return (0, 0)
-            
-            # Try to find a sequence number (e.g., segment_1.m4s -> 1)
-            import re
             numbers = re.findall(r'\d+', u)
             if numbers:
-                # Use the last number in the URL as the sequence index
                 return (1, int(numbers[-1]))
-            return (1, 999999) # Fallback
+            return (1, 999999)
 
         sorted_urls = sorted(urls, key=get_sort_key)
         
@@ -117,16 +136,18 @@ def run_stitch(urls: List[str], title: str = None):
             ext = ".m4s" if ".m4s" in url else (".mp4" if "init" in url else ".bin")
             filename = f"chunk_{i:04d}{ext}"
             filepath = os.path.join(session_dir, filename)
-            
-            # Simple download
+
             resp = requests.get(url, stream=True)
             with open(filepath, 'wb') as f:
                 for chunk in resp.iter_content(chunk_size=8192):
                     f.write(chunk)
             segment_files.append(filepath)
 
-        # Binary join segments instead of using ffmpeg concat demuxer
-        # This is much more reliable for .m4s segments
+            if i == 0:
+                if check_encryption(filepath):
+                    logger.error(f"DRM Encryption detected in {url}. Cannot process encrypted streams.")
+                    return
+
         merged_file = os.path.join(session_dir, "merged_segments.tmp")
         with open(merged_file, 'wb') as outfile:
             for sf in segment_files:
@@ -135,20 +156,16 @@ def run_stitch(urls: List[str], title: str = None):
 
         output_mp3 = os.path.join(DOWNLOAD_DIR, f"{safe_title}_{timestamp}.mp3")
         
-        # FFmpeg command: Just convert the already-merged binary file to MP3
-        import subprocess
         cmd = [
             'ffmpeg', '-y', '-i', merged_file,
             '-acodec', 'libmp3lame', '-ab', '192k', output_mp3
         ]
         
         logger.info(f"Running ffmpeg conversion: {' '.join(cmd)}")
-        # Use errors='replace' and explicit encoding to prevent UnicodeDecodeError on Windows
         result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
         
         if result.returncode == 0:
             logger.info(f"Successfully stitched and saved to {output_mp3}")
-            # Clean up temp file
             if os.path.exists(merged_file):
                 os.remove(merged_file)
         else:
@@ -156,7 +173,6 @@ def run_stitch(urls: List[str], title: str = None):
 
     except Exception as e:
         logger.error(f"Stitching failed: {str(e)}")
-    # Clean up session dir could be added here later
 
 @app.post("/download")
 async def trigger_download(request: Request, background_tasks: BackgroundTasks):
@@ -179,7 +195,6 @@ async def trigger_stitch(request: Request, background_tasks: BackgroundTasks):
     if not session_key or session_key not in sessions:
         raise HTTPException(status_code=404, detail="No segments found for this session")
 
-    # Get a copy of the URLs and then clear the session for this key
     urls = list(sessions[session_key])
     del sessions[session_key]
     
@@ -193,7 +208,6 @@ async def clear_all_data():
     sessions = {}
     logger.info("Cleared all session data.")
     
-    # Remove all subdirectories in TEMP_DIR
     import shutil
     try:
         for filename in os.listdir(TEMP_DIR):
