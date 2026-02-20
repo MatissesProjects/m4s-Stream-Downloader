@@ -121,7 +121,8 @@ def run_stitch(urls: List[str], title: str = None):
         ]
         
         logger.info(f"Running ffmpeg conversion: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        # Use errors='replace' and explicit encoding to prevent UnicodeDecodeError on Windows
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
         
         if result.returncode == 0:
             logger.info(f"Successfully stitched and saved to {output_mp3}")
@@ -156,14 +157,19 @@ async def trigger_stitch(request: Request, background_tasks: BackgroundTasks):
     if not source_page or source_page not in sessions:
         raise HTTPException(status_code=404, detail="No segments found for this source page")
 
-    urls = sessions[source_page]
+    # Get a copy of the URLs and then clear the session for this page
+    # to prevent double-stitching the same segments later.
+    urls = list(sessions[source_page])
+    del sessions[source_page]
+    
     background_tasks.add_task(run_stitch, urls, title)
     return {"status": "started", "segments": len(urls)}
 
 @app.post("/clear")
 async def clear_all_data():
     """Clears all session data and removes temporary files."""
-    sessions.clear()
+    global sessions
+    sessions = {}
     logger.info("Cleared all session data.")
     
     # Remove all subdirectories in TEMP_DIR
