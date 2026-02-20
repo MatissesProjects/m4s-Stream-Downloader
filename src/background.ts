@@ -7,6 +7,7 @@ const MAX_CAPTURES = 50;
 interface CapturedStream {
   url: string;
   sourcePage: string;
+  sourceTitle: string;
   timestamp: string;
   type: string;
 }
@@ -39,14 +40,39 @@ chrome.webRequest.onCompleted.addListener(
 
     const url = details.url;
     if (TARGET_EXTENSIONS.some(ext => url.includes(ext))) {
+      // If we see a new manifest or init file, it might be a new track.
+      // We'll reset the current session if it's a manifest or if it's the first capture.
+      const isNewSessionMarker = url.includes('.mpd') || url.includes('.m3u8') || url.includes('init.mp4');
+      
+      if (isNewSessionMarker && capturedUrls.size > 0) {
+        console.log('New session marker detected, resetting local capture state.');
+        capturedUrls.clear();
+        // Optionally notify backend to clear its session too
+        try {
+          fetch('http://localhost:5000/clear', { method: 'POST' }).catch(() => {});
+        } catch (err) {}
+      }
+
       if (capturedUrls.has(url)) return;
 
       capturedUrls.add(url);
       console.log('Captured Media URL:', url);
 
+      // Try to get the tab's title for better file naming
+      let sourceTitle = 'Unknown Page';
+      try {
+        if (details.tabId >= 0) {
+          const tab = await chrome.tabs.get(details.tabId);
+          if (tab && tab.title) sourceTitle = tab.title;
+        }
+      } catch (e) {
+        // Fallback for when tab is no longer available
+      }
+
       const newStream: CapturedStream = {
         url,
         sourcePage: details.initiator || 'unknown',
+        sourceTitle,
         timestamp: new Date().toISOString(),
         type: getFileType(url)
       };
