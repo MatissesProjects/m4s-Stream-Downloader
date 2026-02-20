@@ -2,6 +2,7 @@
 
 const BACKEND_HEALTH_URL = 'http://localhost:5000/health';
 const BACKEND_DOWNLOAD_URL = 'http://localhost:5000/download';
+const BACKEND_STITCH_URL = 'http://localhost:5000/stitch';
 
 interface CapturedStream {
   url: string;
@@ -27,6 +28,30 @@ async function updateUI() {
     if (streams.length === 0) {
       listContainer.innerHTML = '<div style="padding: 10px; font-size: 0.8rem; text-align: center;">No streams captured yet.</div>';
     } else {
+      // Group by sourcePage to offer stitching
+      const sessions = new Set(streams.map(s => s.sourcePage));
+      
+      sessions.forEach(sessionPage => {
+        const sessionStreams = streams.filter(s => s.sourcePage === sessionPage);
+        const segmentsCount = sessionStreams.filter(s => s.type === 'Segment (.m4s)').length;
+        
+        if (segmentsCount > 1) {
+          const sessionItem = document.createElement('div');
+          sessionItem.className = 'stream-item session-item';
+          sessionItem.innerHTML = `
+            <div class="stream-header">
+              <span class="stream-type session-type">SESSION (${segmentsCount} segments)</span>
+            </div>
+            <div class="stream-url" title="${sessionPage}">${sessionPage}</div>
+            <div class="stream-actions">
+              <button class="stitch-btn" data-source="${sessionPage}">Stitch All</button>
+            </div>
+          `;
+          listContainer.appendChild(sessionItem);
+        }
+      });
+
+      // Show individual streams
       streams.forEach((stream) => {
         const item = document.createElement('div');
         item.className = 'stream-item';
@@ -46,16 +71,21 @@ async function updateUI() {
         listContainer.appendChild(item);
       });
 
-      // Add event listeners to all download buttons
+      // Event listeners
       document.querySelectorAll('.download-btn').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           const target = e.target as HTMLButtonElement;
           const url = target.getAttribute('data-url');
           const title = target.getAttribute('data-title');
-          
-          if (url) {
-            await triggerDownload(url, title || 'downloaded_stream');
-          }
+          if (url) await triggerDownload(url, title || 'downloaded_stream');
+        });
+      });
+
+      document.querySelectorAll('.stitch-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const target = e.target as HTMLButtonElement;
+          const source = target.getAttribute('data-source');
+          if (source) await triggerStitch(source);
         });
       });
     }
@@ -71,15 +101,21 @@ async function triggerDownload(url: string, title: string) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url, title })
     });
-    
-    if (response.ok) {
-      alert('Download started in backend!');
-    } else {
-      alert('Backend error: ' + response.statusText);
-    }
-  } catch (err) {
-    alert('Failed to connect to backend for download.');
-  }
+    if (response.ok) alert('Download started!');
+    else alert('Backend error: ' + response.statusText);
+  } catch (err) { alert('Failed to connect to backend.'); }
+}
+
+async function triggerStitch(sourcePage: string) {
+  try {
+    const response = await fetch(BACKEND_STITCH_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourcePage, title: 'stitched_session' })
+    });
+    if (response.ok) alert('Stitching started in background!');
+    else alert('Backend error: ' + response.statusText);
+  } catch (err) { alert('Failed to connect to backend.'); }
 }
 
 async function checkBackendStatus() {

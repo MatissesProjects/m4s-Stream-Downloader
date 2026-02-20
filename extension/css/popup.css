@@ -161,6 +161,30 @@ input:checked + .slider:before {
   background-color: #2ecc71;
 }
 
+.stitch-btn {
+  background-color: #9b59b6;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.stitch-btn:hover {
+  background-color: #8e44ad;
+}
+
+.session-item {
+  background-color: #fef9e7;
+  border-left: 4px solid #f1c40f;
+}
+
+.session-type {
+  background-color: #f1c40f !important;
+  color: #333 !important;
+}
+
 button {
   cursor: pointer;
   padding: 8px;
