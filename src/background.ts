@@ -2,24 +2,40 @@
 
 const TARGET_EXTENSIONS = ['.mpd', '.m3u8', 'init.mp4', '.m4s'];
 const BACKEND_URL = 'http://localhost:5000/process';
+const MAX_CAPTURES = 50;
+
+interface CapturedStream {
+  url: string;
+  sourcePage: string;
+  timestamp: string;
+  type: string;
+}
 
 interface AppState {
   enabled: boolean;
   capturedCount: number;
+  capturedStreams: CapturedStream[];
 }
 
 // Initialize state
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.set({ enabled: true, capturedCount: 0 });
+  chrome.storage.local.set({ enabled: true, capturedCount: 0, capturedStreams: [] });
 });
 
 // Cache for deduplication (temporary in-memory for the session)
 const capturedUrls = new Set<string>();
 
+function getFileType(url: string): string {
+  if (url.includes('.mpd')) return 'DASH (.mpd)';
+  if (url.includes('.m3u8')) return 'HLS (.m3u8)';
+  if (url.includes('init.mp4') || url.includes('.m4s')) return 'Segment (.m4s)';
+  return 'Unknown';
+}
+
 chrome.webRequest.onCompleted.addListener(
   async (details) => {
-    const { enabled } = await chrome.storage.local.get('enabled') as AppState;
-    if (!enabled) return;
+    const state = await chrome.storage.local.get(['enabled', 'capturedStreams']) as AppState;
+    if (!state.enabled) return;
 
     const url = details.url;
     if (TARGET_EXTENSIONS.some(ext => url.includes(ext))) {
@@ -28,30 +44,30 @@ chrome.webRequest.onCompleted.addListener(
       capturedUrls.add(url);
       console.log('Captured Media URL:', url);
 
-      // Update count in storage
-      const { capturedCount } = await chrome.storage.local.get('capturedCount') as AppState;
-      await chrome.storage.local.set({ capturedCount: (capturedCount || 0) + 1 });
+      const newStream: CapturedStream = {
+        url,
+        sourcePage: details.initiator || 'unknown',
+        timestamp: new Date().toISOString(),
+        type: getFileType(url)
+      };
 
-      // Send to local Python backend
+      const updatedStreams = [newStream, ...(state.capturedStreams || [])].slice(0, MAX_CAPTURES);
+
+      await chrome.storage.local.set({ 
+        capturedCount: updatedStreams.length,
+        capturedStreams: updatedStreams
+      });
+
+      // Send to local Python backend (notify only)
       try {
-        const response = await fetch(BACKEND_URL, {
+        fetch(BACKEND_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            streamUrl: url,
-            sourcePage: details.initiator || 'unknown',
-            timestamp: new Date().toISOString()
-          }),
-        });
-
-        if (!response.ok) {
-          console.error('Backend responded with error:', response.statusText);
-        }
-      } catch (err) {
-        console.error('Local server offline or unreachable:', err);
-      }
+          body: JSON.stringify(newStream),
+        }).catch(() => {}); // Ignore errors if backend is offline
+      } catch (err) {}
     }
   },
   { urls: ['<all_urls>'] }
@@ -61,7 +77,7 @@ chrome.webRequest.onCompleted.addListener(
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'clearCaptured') {
     capturedUrls.clear();
-    chrome.storage.local.set({ capturedCount: 0 });
+    chrome.storage.local.set({ capturedCount: 0, capturedStreams: [] });
     sendResponse({ success: true });
   }
 });

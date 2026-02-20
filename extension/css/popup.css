@@ -99,6 +99,68 @@ input:checked + .slider:before {
   font-size: 0.9rem;
 }
 
+.streams-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: white;
+}
+
+.stream-item {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+  gap: 5px;
+}
+
+.stream-item:last-child {
+  border-bottom: none;
+}
+
+.stream-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.stream-type {
+  font-size: 0.75rem;
+  background-color: #2196F3;
+  color: white;
+  padding: 2px 5px;
+  border-radius: 10px;
+}
+
+.stream-url {
+  font-size: 0.75rem;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.stream-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.download-btn {
+  background-color: #27ae60;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.download-btn:hover {
+  background-color: #2ecc71;
+}
+
 button {
   cursor: pointer;
   padding: 8px;
